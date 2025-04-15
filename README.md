@@ -1,16 +1,20 @@
-# EJFREV-
-DF G
+WHATS-GO
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Page Messaging Platform</title>
+    <title>Real-Time Messaging Platform (No DB)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
+        }
+        #message-container {
+            height: 400px;
+            overflow-y: auto;
         }
         .message {
              border-radius: 0.5rem;
@@ -33,6 +37,24 @@ DF G
             margin-right: auto;
             text-align: left;
         }
+        #code-container {
+            background-color: #1e293b;
+            color: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            overflow-x: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.875rem;
+            line-height: 1.5rem;
+            max-height: 200px;
+        }
+        #code-container pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
     </style>
 </head>
 <body class="bg-gray-100 flex flex-col items-center justify-start min-h-screen py-10">
@@ -51,30 +73,53 @@ DF G
     <div class="mt-4">
         <a href="users.html" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Go to Users Page</a>
     </div>
-  <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
-    <script>
-  const messageForm = document.getElementById('message-form');
+    <div id="code-container" class="w-full max-w-2xl">
+        <pre id="code-text"></pre>
+    </div>
+
+ <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+ <script>
+       const messageForm = document.getElementById('message-form');
         const messageInput = document.getElementById('message-input');
         const messageContainer = document.getElementById('message-container');
         const typingIndicator = document.getElementById('typing-indicator');
+        const codeText = document.getElementById('code-text');
         const socket = io();
         const userId = `user-${Math.random().toString(36).substring(7)}`;
         let isTyping = false;
         let typingTimeout;
+        let messageHistory = [];
 
-   function createMessageElement(text, type) {
+  function createMessageElement(text, type) {
             const messageElement = document.createElement('div');
             messageElement.classList.add('message', type);
             messageElement.textContent = text;
             return messageElement;
         }
 
-   function addMessageToContainer(messageElement) {
+  function addMessageToContainer(messageElement) {
             messageContainer.appendChild(messageElement);
             messageContainer.scrollTop = messageContainer.scrollHeight;
         }
 
-   messageForm.addEventListener('submit', (event) => {
+  function updateCodeDisplay() {
+            let code = '<html>\n' +
+                '  <head>\n' +
+                '    <title>Messaging Platform</title>\n' +
+                '  </head>\n' +
+                '  <body>\n' +
+                '    <div id="message-container">\n';
+            messageHistory.forEach(msg => {
+                code += `      <div class="message ${msg.sender === userId ? 'sent' : 'received'}">${msg.text}</div>\n`;
+            });
+            code +=
+                '    </div>\n' +
+                '  </body>\n' +
+                '</html>';
+            codeText.textContent = code;
+        }
+
+  messageForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const messageText = messageInput.value.trim();
             if (messageText === '') return;
@@ -82,13 +127,15 @@ DF G
             addMessageToContainer(messageElement);
             socket.emit('message', { senderId: userId, text: messageText });
             storeMessage(userId, messageText, 'sent');
+            messageHistory.push({ sender: userId, text: messageText });
+            updateCodeDisplay();
             messageInput.value = '';
             isTyping = false;
             socket.emit('typing', { senderId: userId, isTyping: false });
             typingIndicator.textContent = '';
         });
 
- messageInput.addEventListener('input', () => {
+  messageInput.addEventListener('input', () => {
             if (messageInput.value.trim() && !isTyping) {
                 isTyping = true;
                 socket.emit('typing', { senderId: userId, isTyping: true });
@@ -105,20 +152,24 @@ DF G
                 clearTimeout(typingTimeout);
             }
         });
-   socket.on('message', (data) => {
+
+ socket.on('message', (data) => {
             if (data.senderId !== userId) {
                 const messageElement = createMessageElement(data.text, 'received');
                 addMessageToContainer(messageElement);
                 storeMessage(data.senderId, data.text, 'received');
+                messageHistory.push({ sender: data.senderId, text: data.text });
+                updateCodeDisplay();
             }
         });
-socket.on('typing', (data) => {
+
+        socket.on('typing', (data) => {
             if (data.senderId !== userId) {
                 typingIndicator.textContent = data.isTyping ? `${data.senderId} is typing...` : '';
             }
         });
 
-  function loadMessages() {
+ function loadMessages() {
             const storedMessages = localStorage.getItem('messages');
             if (storedMessages) {
                 try {
@@ -127,7 +178,9 @@ socket.on('typing', (data) => {
                     messages.forEach(message => {
                         const messageElement = createMessageElement(message.text, message.sender === userId ? 'sent' : 'received');
                         addMessageToContainer(messageElement);
+                         messageHistory.push({ sender: message.sender, text: message.text });
                     });
+                    updateCodeDisplay();
                 } catch (error) {
                     console.error('Error parsing stored messages:', error);
                     localStorage.removeItem('messages');
@@ -135,7 +188,7 @@ socket.on('typing', (data) => {
             }
         }
 
-  function storeMessage(sender, text, type) {
+function storeMessage(sender, text, type) {
             let messages = [];
             const storedMessages = localStorage.getItem('messages');
             if (storedMessages) {
